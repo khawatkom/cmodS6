@@ -1,0 +1,4 @@
+vhdl work "../../../../../Xilinx/cmods6/CmodS6_demo/source/port_io.vhd"
+vhdl work "../../../../../Xilinx/cmods6/CmodS6_demo/source/clk_gen_50MHz.vhd"
+vhdl work "dpimref.vhd"
+vhdl work "../../../../../Xilinx/cmods6/CmodS6_demo/source/top.vhd"

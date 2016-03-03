@@ -1,0 +1,8 @@
+INTSTYLE=ise
+INFILE=/home/maikon/Documents/511ece/project/sorterDil/spartan6t1/top.ncd
+OUTFILE=/home/maikon/Documents/511ece/project/sorterDil/spartan6t1/top.bit
+FAMILY=Spartan6
+PART=xc6slx4-2cpg196
+WORKINGDIR=/home/maikon/Documents/511ece/project/sorterDil/spartan6t1
+LICENSE=WebPack
+USER_INFO=210762349_0_0_410
