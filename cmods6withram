@@ -1,0 +1,379 @@
+----------------------------------------------------------------------------------
+--  File: port_io.vhd
+----------------------------------------------------------------------------------
+--  Author: Jordan Retz
+--  CopyRight (c) 2013 Digilent Inc.
+----------------------------------------------------------------------------------
+--  Revision History:
+--  	07/24/2013	Created (Jordan Retz)
+----------------------------------------------------------------------------------
+
+library IEEE;
+use IEEE.STD_LOGIC_1164.ALL;
+
+use IEEE.STD_LOGIC_ARITH.ALL;
+use IEEE.STD_LOGIC_UNSIGNED.ALL;
+
+-- For IOBUF Instantiations
+library UNISIM;
+use UNISIM.VCOMPONENTS.ALL;
+ 
+----------------------------------------------------------------------------------
+--	Title: port_io Entity
+----------------------------------------------------------------------------------
+--  Inputs: 
+--  Outputs: 
+----------------------------------------------------------------------------------
+--  Description:
+--  	
+----------------------------------------------------------------------------------
+
+entity port_io is
+    Port ( 
+		  -- clock in
+		  CLK : in STD_LOGIC;
+		  
+		  -- register currently being addressed
+		  ADDRESS : in  STD_LOGIC_VECTOR (3 downto 0);
+ 
+		  -- indicates reading (1) or writing (0)
+		  RW	: in STD_LOGIC;
+		  
+		  -- external handshake signal (enable operation basically)
+		  HS	: in STD_LOGIC;
+		  
+		  -- output bus for reading from port register
+		  REG_OUT : out STD_LOGIC_VECTOR (7 downto 0);
+		  
+		  -- input bus for writing to port register
+		  REG_IN	 : in STD_LOGIC_VECTOR (7 downto 0);
+		  
+		  -- connected to physical I/O pad
+		  PORTA : inout  STD_LOGIC_VECTOR (7 downto 0);
+		  PORTB : inout  STD_LOGIC_VECTOR (7 downto 0);
+		  PORTC : inout  STD_LOGIC_VECTOR (6 downto 0);
+		  PORTD : inout  STD_LOGIC_VECTOR (7 downto 0);
+		  PORTE : inout  STD_LOGIC_VECTOR (7 downto 0);	
+		  PORTF : inout  STD_LOGIC_VECTOR (6 downto 0)
+		 );
+end port_io;
+
+-------------------------------------------------------
+-------------------------------------------------------
+-- Architecture Start
+-------------------------------------------------------
+-------------------------------------------------------
+
+architecture Behavioral of port_io is
+
+-------------------------------------------------------
+-- Addressable Register Address Constants
+-------------------------------------------------------
+constant addr_port_a : STD_LOGIC_VECTOR (3 downto 0) := X"0";
+constant addr_port_b : STD_LOGIC_VECTOR (3 downto 0) := X"1";
+constant addr_port_c : STD_LOGIC_VECTOR (3 downto 0) := X"2";
+constant addr_port_d : STD_LOGIC_VECTOR (3 downto 0) := X"3";
+constant addr_port_e : STD_LOGIC_VECTOR (3 downto 0) := X"4";
+constant addr_port_f : STD_LOGIC_VECTOR (3 downto 0) := X"5";
+
+constant addr_tris_a : STD_LOGIC_VECTOR (3 downto 0) := X"6";
+constant addr_tris_b : STD_LOGIC_VECTOR (3 downto 0) := X"7";
+constant addr_tris_c : STD_LOGIC_VECTOR (3 downto 0) := X"8";
+constant addr_tris_d : STD_LOGIC_VECTOR (3 downto 0) := X"9";
+constant addr_tris_e : STD_LOGIC_VECTOR (3 downto 0) := X"A";
+constant addr_tris_f : STD_LOGIC_VECTOR (3 downto 0) := X"B";
+
+constant addr_ram_read : STD_LOGIC_VECTOR (3 downto 0) := X"C";
+constant addr_ram_write : STD_LOGIC_VECTOR (3 downto 0) := X"D";
+
+-------------------------------------------------------
+-- IO Registers
+-------------------------------------------------------
+signal addr		: STD_LOGIC_VECTOR (3 downto 0);
+
+-- Drive IO pin if corresponding tris bit cleared
+signal drive_a 	: STD_LOGIC_VECTOR (7 downto 0) := "ZZZZZZZZ";
+signal drive_b 	: STD_LOGIC_VECTOR (7 downto 0) := "ZZZZZZZZ";
+signal drive_c 	: STD_LOGIC_VECTOR (6 downto 0) := "ZZZZZZZ";
+signal drive_d 	: STD_LOGIC_VECTOR (7 downto 0) := "ZZZZZZZZ";
+signal drive_e 	: STD_LOGIC_VECTOR (7 downto 0) := "ZZZZZZZZ";
+signal drive_f 	: STD_LOGIC_VECTOR (6 downto 0) := "ZZZZZZZ";
+
+-- Reads value on IO pin, whether being driven from DRIVE or physical pin
+signal port_a 	: STD_LOGIC_VECTOR (7 downto 0) := "ZZZZZZZZ";
+signal port_b 	: STD_LOGIC_VECTOR (7 downto 0) := "ZZZZZZZZ";
+signal port_c 	: STD_LOGIC_VECTOR (6 downto 0) := "ZZZZZZZ";
+signal port_d 	: STD_LOGIC_VECTOR (7 downto 0) := "ZZZZZZZZ";
+signal port_e 	: STD_LOGIC_VECTOR (7 downto 0) := "ZZZZZZZZ";
+signal port_f 	: STD_LOGIC_VECTOR (6 downto 0) := "ZZZZZZZ";
+
+-- Set's I/O pin direction
+signal tris_a 	: STD_LOGIC_VECTOR (7 downto 0) := "11111111";
+signal tris_b 	: STD_LOGIC_VECTOR (7 downto 0) := "11111111";
+signal tris_c 	: STD_LOGIC_VECTOR (6 downto 0) := "1111111";
+signal tris_d 	: STD_LOGIC_VECTOR (7 downto 0) := "11111111";
+signal tris_e 	: STD_LOGIC_VECTOR (7 downto 0) := "11111111";
+signal tris_f 	: STD_LOGIC_VECTOR (6 downto 0) := "1111111";
+	
+-------------------------------------------------------
+-- MUX'ed Signals. One 2-1 mux for every output pin
+-------------------------------------------------------
+signal iobuf_in_a 	: STD_LOGIC_VECTOR (7 downto 0);		-- selected when TRIS_A<bit> = 0
+signal iobuf_out_a 	: STD_LOGIC_VECTOR (7 downto 0);		-- selected when TRIS_A<bit> = 1
+
+signal iobuf_in_b 	: STD_LOGIC_VECTOR (7 downto 0);		-- selected when TRIS_A<bit> = 0
+signal iobuf_out_b 	: STD_LOGIC_VECTOR (7 downto 0);		-- selected when TRIS_A<bit> = 1
+
+signal iobuf_in_c 	: STD_LOGIC_VECTOR (6 downto 0);		-- selected when TRIS_A<bit> = 0
+signal iobuf_out_c 	: STD_LOGIC_VECTOR (6 downto 0);		-- selected when TRIS_A<bit> = 1	
+
+signal iobuf_in_d 	: STD_LOGIC_VECTOR (7 downto 0);		-- selected when TRIS_A<bit> = 0
+signal iobuf_out_d 	: STD_LOGIC_VECTOR (7 downto 0);		-- selected when TRIS_A<bit> = 1
+
+signal iobuf_in_e 	: STD_LOGIC_VECTOR (7 downto 0);		-- selected when TRIS_A<bit> = 0
+signal iobuf_out_e 	: STD_LOGIC_VECTOR (7 downto 0);		-- selected when TRIS_A<bit> = 1
+
+signal iobuf_in_f 	: STD_LOGIC_VECTOR (6 downto 0);		-- selected when TRIS_A<bit> = 0
+signal iobuf_out_f	: STD_LOGIC_VECTOR (6 downto 0);		-- selected when TRIS_A<bit> = 1
+
+-------------------------------------------------------
+-- RAM signals
+-------------------------------------------------------
+signal addr_ram : std_logic_vector(7 downto 0) := "00000000";
+signal DVec : std_logic_vector(7 downto 0);
+signal OVec : std_logic_vector(7 downto 0);
+
+-------------------------------------------------------
+-- Behavioral Begin
+-------------------------------------------------------
+begin
+
+-------------------------------------------------------
+-- IOBUF Instantiations
+-------------------------------------------------------
+
+-- Generates 8 IOBUF instances for ports A, B, D, E
+IOBUF_GEN1: for i in 0 to 7 generate
+begin
+	IOBUFA : IOBUF								-- A
+	generic map (
+		DRIVE => 12,
+		IOSTANDARD => "LVCMOS33",
+		SLEW => "SLOW")
+	port map (
+		O => iobuf_out_a(i),
+		I => iobuf_in_a(i),
+		IO => PORTA(i),
+		T => tris_a(i)
+	);
+	
+	IOBUFB : IOBUF								-- B
+	generic map (
+		DRIVE => 12,
+		IOSTANDARD => "LVCMOS33",
+		SLEW => "SLOW")
+	port map (
+		O => iobuf_out_b(i),
+		I => iobuf_in_b(i),
+		IO => PORTB(i),
+		T => tris_b(i)
+	);
+	
+	IOBUFD : IOBUF								-- D
+	generic map (
+		DRIVE => 12,
+		IOSTANDARD => "LVCMOS33",
+		SLEW => "SLOW")
+	port map (
+		O => iobuf_out_d(i),
+		I => iobuf_in_d(i),
+		IO => PORTD(i),
+		T => tris_d(i)
+	);
+	
+	IOBUFE : IOBUF								-- E
+	generic map (
+		DRIVE => 12,
+		IOSTANDARD => "LVCMOS33",
+		SLEW => "SLOW")
+	port map (
+		O => iobuf_out_e(i),
+		I => iobuf_in_e(i),
+		IO => PORTE(i),
+		T => tris_e(i)
+	);
+	
+end generate;
+
+-- Generates 7 IOBUF instances for ports C and F
+IOBUF_GEN2: for i in 0 to 6 generate
+begin
+	IOBUFC : IOBUF								-- C
+	generic map (
+		DRIVE => 12,
+		IOSTANDARD => "LVCMOS33",
+		SLEW => "SLOW")
+	port map (
+		O => iobuf_out_c(i),
+		I => iobuf_in_c(i),
+		IO => PORTC(i),
+		T => tris_c(i)
+	);
+	
+	IOBUFF : IOBUF								-- F
+	generic map (
+		DRIVE => 12,
+		IOSTANDARD => "LVCMOS33",
+		SLEW => "SLOW")
+	port map (
+		O => iobuf_out_f(i),
+		I => iobuf_in_f(i),
+		IO => PORTF(i),
+		T => tris_f(i)
+	);
+end generate;
+
+-------------------------------------------------------
+-- Update port register input signals
+-------------------------------------------------------
+
+PORT_REG: process (CLK) begin
+	
+	if(CLK'event and CLK = '1') then
+			port_a		<= iobuf_out_a;
+			port_b		<= iobuf_out_b;
+			port_c		<= iobuf_out_c;	
+			port_d		<= iobuf_out_d;
+			port_e		<= iobuf_out_e;
+			port_f		<= iobuf_out_f;			
+	end if;
+
+end process;
+
+-------------------------------------------------------
+-- IO_BUF input signals are continuously driven by drive registers
+-------------------------------------------------------
+
+iobuf_in_a <= drive_a;
+iobuf_in_b <= drive_b;
+iobuf_in_c <= drive_c;
+iobuf_in_d <= drive_d;
+iobuf_in_e <= drive_e;
+iobuf_in_f <= drive_f;
+
+
+-------------------------------------------------------
+-- RAM Instanciated 
+-------------------------------------------------------
+
+RAM_8 : for i in 0 to 7 generate
+begin
+
+RAM256X1S_inst : RAM256X1S
+	generic map (
+	INIT => X"0000000000000000000000000000000000000000000000000000000000000000")
+	port map (
+	O => OVec(i), -- Read/Write port 1-bit ouput
+	A => addr_ram, -- Read/Write port 8-bit address input
+	D => DVec(i), -- RAM data input
+	WCLK => CLK, -- Write clock input
+	WE => not(RW) -- Write enable input
+);
+end generate;
+
+-------------------------------------------------------
+-- Update drive register output signals from REG_IN
+-- or, put the addressed port register on REG_OUT
+-------------------------------------------------------
+
+DRIVE_REG: process (CLK, HS) begin
+	if(CLK'event and CLK = '1' and HS = '1') then	
+		if RW = '0' then 							-- write
+		
+			case ADDRESS is
+				-- write to port registers (those configured as outputs will be affected)
+				when addr_port_a => -- port_a
+					drive_a <= REG_IN;
+				when addr_port_b => -- port_b
+					drive_b <= REG_IN;
+				when addr_port_c => -- port_c
+					drive_c(6 downto 0) <= REG_IN(6 downto 0);
+				when addr_port_d => -- port_d
+					drive_d <= REG_IN;
+				when addr_port_e => -- port_e
+					drive_e <= REG_IN;
+				when addr_port_f => -- port_f
+					drive_f(6 downto 0) <= REG_IN(6 downto 0);
+					
+				-- write to TRIS registers
+				when addr_tris_a => -- tris_a
+					tris_a <= REG_IN;
+				when addr_tris_b => -- tris_b
+					tris_b <= REG_IN;
+				when addr_tris_c => -- tris_c
+					tris_c(6 downto 0) <= REG_IN(6 downto 0);
+				when addr_tris_d => -- tris_d
+					tris_d <= REG_IN;
+				when addr_tris_e => -- tris_e
+					tris_e <= REG_IN;
+				when addr_tris_f => -- tris_f
+					tris_f(6 downto 0) <= REG_IN(6 downto 0);
+				
+				when addr_ram_write =>
+					DVec <= REG_IN;
+					addr_ram <= addr_ram + '1';
+				
+				when others =>
+					REG_OUT <= REG_IN;
+			
+			end case;
+		
+		else											-- read
+		
+			case ADDRESS is
+				-- read the values on port registers (either from being driven as output, or externally as input)
+				when addr_port_a =>
+					REG_OUT <= port_a;
+				when addr_port_b =>
+					REG_OUT <= port_b;
+				when addr_port_c =>
+					REG_OUT(6 downto 0) <= port_c(6 downto 0);
+					REG_OUT(7) <= 'X';
+				when addr_port_d =>
+					REG_OUT <= port_d;
+				when addr_port_e =>
+					REG_OUT <= port_e;
+				when addr_port_f =>
+					REG_OUT(6 downto 0) <= port_f(6 downto 0);
+					REG_OUT(7) <= 'X';
+					
+				-- read from TRIS registers
+				when addr_tris_a => -- tris_a
+					REG_OUT <= tris_a;
+				when addr_tris_b => -- tris_b
+					REG_OUT <= tris_b;
+				when addr_tris_c => -- tris_c
+					REG_OUT(6 downto 0) <= tris_c(6 downto 0);
+					REG_OUT(7) <= 'X';
+				when addr_tris_d => -- tris_d
+					REG_OUT <= tris_d;
+				when addr_tris_e => -- tris_e
+					REG_OUT <= tris_e;
+				when addr_tris_f => -- tris_f
+					REG_OUT(6 downto 0) <= tris_f(6 downto 0);
+					REG_OUT(7) <= 'X';
+				
+				when addr_ram_read =>
+					REG_OUT <= OVec;
+					addr_ram <= addr_ram - '1';
+				
+				when others =>
+					REG_OUT <= REG_IN;
+			
+			end case;
+		
+		end if;
+		
+	end if;
+end process;
+end Behavioral;
